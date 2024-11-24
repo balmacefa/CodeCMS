@@ -1,0 +1,30 @@
+version: "3.8"
+services:
+
+  orchestrator:
+    build:
+      context: ./orchestrator
+    ports:
+      - ":3000"
+    depends_on:
+      - python-executor
+      - ts-executor
+      - go-executor
+
+  python-executor:
+    build:
+      context: ./services/python-executor
+    ports:
+      - ":5000"
+
+  ts-executor:
+    build:
+      context: ./services/ts-executor
+    ports:
+      - ":4000"
+
+  go-executor:
+    build:
+      context: ./services/go-executor
+    ports:
+      - ":6000"
