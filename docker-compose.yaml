@@ -7,14 +7,14 @@ services:
     ports:
       - ":5000"
 
-  ts-executor:
-    build:
-      context: ./services/ts-executor
-    ports:
-      - ":4000"
+  # ts-executor:
+  #   build:
+  #     context: ./services/ts-executor
+  #   ports:
+  #     - ":4000"
 
-  go-executor:
-    build:
-      context: ./services/go-executor
-    ports:
-      - ":6000"
+  # go-executor:
+  #   build:
+  #     context: ./services/go-executor
+  #   ports:
+  #     - ":6000"
