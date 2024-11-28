@@ -5,16 +5,9 @@ services:
     build:
       context: ./services/python-executor
     ports:
-      - ":5000"
-
-  # ts-executor:
-  #   build:
-  #     context: ./services/ts-executor
-  #   ports:
-  #     - ":4000"
-
-  # go-executor:
-  #   build:
-  #     context: ./services/go-executor
-  #   ports:
-  #     - ":6000"
+      - "5000:5000"
+    environment:
+      # Define la URL generada automáticamente para este servicio
+      - SERVICE_FQDN_PYTHON_EXECUTOR=/
+      # Si necesitas usar la URL en otro lugar, define otra variable
+      - SERVICE_URL_PYTHON_EXECUTOR=$SERVICE_FQDN_PYTHON_EXECUTOR
