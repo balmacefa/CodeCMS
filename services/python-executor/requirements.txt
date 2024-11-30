@@ -1,2 +1,3 @@
-flask
-RestrictedPython
+fastapi
+uvicorn
+pydantic
