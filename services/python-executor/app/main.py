@@ -73,6 +73,22 @@ class CloseSessionRequest(BaseModel):
 sessions = {}
 session_lock = asyncio.Lock()
 
+def get_module_files(session_id: str, module_name: str) -> List[str]:
+    """
+    Obtiene la lista de archivos para un módulo específico dentro de una sesión.
+    Retorna una lista con las rutas relativas de los archivos.
+    """
+    module_path = os.path.join(BASE_MODULES_DIR, session_id, module_name)
+    file_list = []
+    if os.path.isdir(module_path):
+        for root, dirs, files in os.walk(module_path):
+            for file in files:
+                # Obtener la ruta relativa del archivo respecto al módulo
+                rel_dir = os.path.relpath(root, module_path)
+                rel_file = os.path.join(rel_dir, file) if rel_dir != '.' else file
+                file_list.append(rel_file)
+    return file_list
+
 @app.post("/start-session/", response_model=StartSessionResponse)
 async def start_session(request: StartSessionRequest):
     """
@@ -224,13 +240,31 @@ async def close_session(
 async def root():
     """
     Ruta de verificación del estado del servidor.
+    Devuelve información detallada sobre las sesiones activas, los módulos cargados y la estructura de archivos.
     """
     logger.debug("Recibiendo solicitud para verificar estado del servidor.")
+    
     async with session_lock:
         active_sessions = len(sessions)
+        sessions_info = []
+        
+        for session_id, session_data in sessions.items():
+            modules_info = []
+            for module_name in session_data["modules"]:
+                files = get_module_files(session_id, module_name)
+                modules_info.append({
+                    "name": module_name,
+                    "files": files
+                })
+            sessions_info.append({
+                "session_id": session_id,
+                "modules": modules_info
+            })
+    
     logger.info(f"Estado del servidor solicitado. Sesiones activas: {active_sessions}")
     return {
         "status": "Servidor en funcionamiento",
         "timestamp": datetime.utcnow().isoformat() + "Z",
-        "active_sessions": active_sessions
+        "active_sessions": active_sessions,
+        "sessions": sessions_info  # Información detallada de las sesiones
     }
