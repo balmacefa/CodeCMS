@@ -1,32 +1,52 @@
-# Archivo: dev.dockerfile
+FROM ubuntu:22.04
 
-FROM python:3.11-slim
-
-# Configurar directorio de trabajo
 WORKDIR /app
 
-# Evitar la generación de archivos .pyc en el contenedor
 ENV PYTHONDONTWRITEBYTECODE=1
-
-# Desactivar el buffer de salida para facilitar el logging
 ENV PYTHONUNBUFFERED=1
+ENV DEBIAN_FRONTEND=noninteractive
 
-# Instalar dependencias del sistema necesarias para desarrollo
-RUN apt-get update && apt-get install -y --no-install-recommends build-essential
+# Actualizar paquetes del sistema
+RUN apt-get update
+
+# Instalar dependencias necesarias
+RUN apt-get install -y --no-install-recommends \
+    python3.11 \
+    python3.11-venv \
+    python3-pip \
+    build-essential \
+    wget \
+    libgl1-mesa-glx \
+    libxi6 \
+    libxrender1 \
+    libxrandr2 \
+    libxcursor1 \
+    libopenal1 \
+    libsndfile1 \
+    libfreetype6 \
+    libpython3.11 \
+    libpython3.11-dev
+
+# Limpiar cachés de apt para reducir tamaño de la imagen
 RUN rm -rf /var/lib/apt/lists/*
+
+# Configurar Python 3.11 como predeterminado
+RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1
+RUN update-alternatives --config python3
+
+# Crear un enlace simbólico de python3 a python
+RUN ln -s /usr/bin/python3 /usr/bin/python
 
 # Copiar archivo de dependencias e instalarlas
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN python3 -m pip install --no-cache-dir -r requirements.txt
 
 # Instalar herramientas adicionales para desarrollo
-RUN pip install watchdog debugpy # Agregar debugpy para depuración
+RUN python3 -m pip install watchdog debugpy
 
-# Exponer los puertos necesarios
-# Puerto de la aplicación
+# Exponer puertos necesarios
 EXPOSE 8000
-# Puerto de depuración remota
 EXPOSE 5678
 
-# Comando por defecto para modo desarrollo con depuración habilitada
+# Comando por defecto
 CMD ["sh", "-c", "python -m debugpy --listen 0.0.0.0:5678 -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"]

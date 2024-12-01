@@ -1,9 +1,3 @@
 fastapi
 uvicorn
 pydantic
-numpy
-pandas
-scikit-learn
-matplotlib
-seaborn
-bpy==4.3.0
