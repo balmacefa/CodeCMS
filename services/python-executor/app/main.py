@@ -77,6 +77,74 @@ class CloseSessionRequest(BaseModel):
 sessions = {}
 session_lock = asyncio.Lock()
 
+
+def generate_dts_string(module_name: str, cls: type) -> str:
+    """
+    Genera un string representando un archivo `.d.ts` basado en una clase y sus métodos.
+    """
+    def python_to_ts_type(py_type: Any) -> str:
+        """Convierte un tipo de Python a TypeScript."""
+        if py_type in [str, "str"]:
+            return "string"
+        elif py_type in [int, "int"]:
+            return "number"
+        elif py_type in [float, "float"]:
+            return "number"
+        elif py_type in [bool, "bool"]:
+            return "boolean"
+        elif py_type in [list, "list", List]:
+            return "any[]"  # Mejorado si hay subtipos
+        elif py_type in [dict, "dict", Dict]:
+            return "{ [key: string]: any }"  # Mejorado si hay subtipos
+        elif py_type in [Any, "Any", "unknown"]:
+            return "unknown"
+        else:
+            return "any"  # Por defecto
+
+    dts_lines = [f"declare module \"{module_name}\" {{"]
+    class_name = cls.__name__
+    doc = inspect.getdoc(cls) or ""
+    dts_lines.append(f"  /**")
+    dts_lines.append(f"   * {doc}")
+    dts_lines.append(f"   */")
+    dts_lines.append(f"  class {class_name} {{")
+    
+    # Obtener métodos de la clase
+    for method_name, method in inspect.getmembers(cls, predicate=inspect.isfunction):
+        doc = inspect.getdoc(method) or ""
+        signature = inspect.signature(method)
+        params = []
+        
+        for param_name, param in signature.parameters.items():
+            if param_name == "self":  # Ignorar `self`
+                continue
+            ts_type = python_to_ts_type(param.annotation)
+            params.append(f"{param_name}: {ts_type}")
+        
+        param_str = ", ".join(params)
+        return_type = python_to_ts_type(signature.return_annotation)
+        dts_lines.append(f"    /**")
+        dts_lines.append(f"     * {doc}")
+        dts_lines.append(f"     */")
+        dts_lines.append(f"    {method_name}({param_str}): {return_type};")
+    
+    # Obtener propiedades (getters)
+    for prop_name, prop in inspect.getmembers(cls, predicate=lambda p: isinstance(p, property)):
+        doc = inspect.getdoc(prop) or ""
+        ts_type = python_to_ts_type(prop.fget.__annotations__.get("return", Any))
+        dts_lines.append(f"    /**")
+        dts_lines.append(f"     * {doc}")
+        dts_lines.append(f"     */")
+        dts_lines.append(f"    get {prop_name}(): {ts_type};")
+    
+    dts_lines.append("  }")
+    dts_lines.append("}")
+    return "\n".join(dts_lines)
+
+
+
+
+
 def get_module_files(session_id: str, module_name: str) -> List[str]:
     """
     Obtiene la lista de archivos para un módulo específico dentro de una sesión.
@@ -118,11 +186,11 @@ import inspect
 async def upload_modules(
     session_id: str,
     request: UploadModulesRequest,
-    req: Request  # Inyecta el objeto Request
+    req: Request
 ):
     """
     Sube módulos al servidor asociados a una sesión existente.
-    El session_id se proporciona como parte de la ruta.
+    Genera un archivo `.d.ts` basado en las clases y métodos encontrados.
     """
     logger.debug(f"Inicio de la función upload_modules para sesión {session_id}.")
     
@@ -137,7 +205,8 @@ async def upload_modules(
         os.makedirs(session_path)
         logger.debug(f"Creado directorio para sesión: {session_path}")
     
-    # Guardar los archivos de los módulos
+    dts_content = []
+
     for module in request.modules:
         module_path = os.path.join(session_path, module.name)
         if not os.path.exists(module_path):
@@ -154,7 +223,6 @@ async def upload_modules(
                 logger.error(f"Error al guardar el archivo {file_path}: {e}")
                 raise HTTPException(status_code=500, detail=f"Error saving file {filename}: {e}")
     
-    # Cargar y ejecutar main() y eventos opcionales
     async with session_lock:
         modules_loaded = sessions[session_id]["modules"]
         for module in request.modules:
@@ -167,54 +235,26 @@ async def upload_modules(
                     spec.loader.exec_module(loaded_module)
                     logger.debug(f"Módulo cargado dinámicamente: {main_py}")
                     
-                    # Buscar una clase con el método main
-                    class_with_main = None
+                    # Buscar clases en el módulo y generar `.d.ts`
                     for attr_name in dir(loaded_module):
                         attr = getattr(loaded_module, attr_name)
                         if isinstance(attr, type):  # Es una clase
-                            if hasattr(attr, "main") and callable(getattr(attr, "main")):
-                                class_with_main = attr
-                                break
-                    
-                    if class_with_main:
-                        logger.debug(f"Ejecutando método 'main' de la clase en el módulo: {module.name}")
-                        module_instance = class_with_main().main()
-                        modules_loaded[module.name] = module_instance
-                        logger.info(f"Método 'main' ejecutado para módulo: {module.name}")
-                        
-                        # Llamar a eventos opcionales
-                        if hasattr(module_instance, "onInit"):
-                            on_init = getattr(module_instance, "onInit")
-                            if inspect.iscoroutinefunction(on_init):
-                                logger.debug(f"Ejecutando evento asíncrono 'onInit' para módulo: {module.name}")
-                                await on_init()
-                            else:
-                                logger.debug(f"Ejecutando evento síncrono 'onInit' para módulo: {module.name}")
-                                on_init()
-                            logger.info(f"Evento 'onInit' ejecutado para módulo: {module.name}")
-                        
-                        if hasattr(module_instance, "onDestroy"):
-                            on_destroy = getattr(module_instance, "onDestroy")
-                            if inspect.iscoroutinefunction(on_destroy):
-                                logger.debug(f"Evento asíncrono 'onDestroy' registrado para módulo: {module.name}")
-                                # Registra `onDestroy` para su ejecución posterior si es necesario
-                            else:
-                                logger.debug(f"Evento síncrono 'onDestroy' registrado para módulo: {module.name}")
-                                # Registra `onDestroy` para su ejecución posterior
-                    else:
-                        logger.warning(f"No se encontró ninguna clase con el método 'main' en el módulo: {module.name}")
+                            dts_content.append(generate_dts_string(module.name, attr))
+
                 except Exception as e:
                     logger.error(f"Error al cargar o ejecutar el módulo {module.name}: {e}")
                     raise HTTPException(status_code=500, detail=f"Error loading module {module.name}: {e}")
             else:
                 logger.warning(f"Archivo main.py no encontrado para módulo: {module.name}")
         
-        sessions[session_id]["modules"] = modules_loaded
-        logger.info(f"Módulos cargados para sesión {session_id}: {[m.name for m in request.modules]}")
-    
-    logger.debug(f"Finalizando función upload_modules para sesión {session_id}.")
-    return {"status": f"Módulos subidos correctamente a la sesión {session_id}"}
+    sessions[session_id]["modules"] = modules_loaded
+    logger.info(f"Módulos cargados para sesión {session_id}: {[m.name for m in request.modules]}")
 
+    # Unir el contenido del archivo `.d.ts`
+    dts_final_content = "\n\n".join(dts_content)
+
+    logger.debug(f"Finalizando función upload_modules para sesión {session_id}.")
+    return {"status": f"Módulos subidos correctamente a la sesión {session_id}", "dts_content": dts_final_content}
 
 @app.post("/execute/{session_id}/", status_code=200)
 async def execute(
@@ -253,7 +293,15 @@ async def execute(
     try:
         func = getattr(target_module, request.function)
         logger.info(f"Ejecutando función '{request.function}' en sesión {session_id} con parámetros: {request.params}")
-        result = func(**request.params)
+        
+        # Determinar si la función es asíncrona
+        if inspect.iscoroutinefunction(func):
+            logger.debug(f"La función '{request.function}' es asíncrona. Ejecutando con 'await'.")
+            result = await func(**request.params)
+        else:
+            logger.debug(f"La función '{request.function}' es síncrona. Ejecutando directamente.")
+            result = func(**request.params)
+        
         logger.info(f"Función '{request.function}' ejecutada exitosamente en sesión {session_id}. Resultado: {result}")
         return {"result": result}
     except Exception as e:
