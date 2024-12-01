@@ -6,4 +6,4 @@ pandas
 scikit-learn
 matplotlib
 seaborn
-bpy==3.6.0
+bpy==4.3.0

@@ -12,6 +12,7 @@ from logging.handlers import RotatingFileHandler
 import asyncio  # Importación añadida
 from datetime import datetime  # Importación añadida
 import json
+import inspect
 
 # Configuración de Logging
 logger = logging.getLogger("fastapi_app")
@@ -102,46 +103,41 @@ def generate_dts_string(module_name: str, cls: type) -> str:
             return "any"  # Por defecto
 
     dts_lines = [f"declare module \"{module_name}\" {{"]
+
     class_name = cls.__name__
-    doc = inspect.getdoc(cls) or ""
+    class_doc = inspect.getdoc(cls) or ""
     dts_lines.append(f"  /**")
-    dts_lines.append(f"   * {doc}")
+    dts_lines.append(f"   * {class_doc}")
     dts_lines.append(f"   */")
     dts_lines.append(f"  class {class_name} {{")
     
     # Obtener métodos de la clase
     for method_name, method in inspect.getmembers(cls, predicate=inspect.isfunction):
-        doc = inspect.getdoc(method) or ""
+        method_doc = inspect.getdoc(method) or ""
         signature = inspect.signature(method)
-        params = []
-        
+
+        # Crear un único parámetro llamado "args"
+        args_structure = []
         for param_name, param in signature.parameters.items():
             if param_name == "self":  # Ignorar `self`
                 continue
             ts_type = python_to_ts_type(param.annotation)
-            params.append(f"{param_name}: {ts_type}")
-        
-        param_str = ", ".join(params)
+            args_structure.append(f"{param_name}: {ts_type}")
+
+        # Convertir estructura de args en TypeScript
+        args_str = f"args: {{ {', '.join(args_structure)} }}"
         return_type = python_to_ts_type(signature.return_annotation)
+
         dts_lines.append(f"    /**")
-        dts_lines.append(f"     * {doc}")
+        dts_lines.append(f"     * {method_doc}")
         dts_lines.append(f"     */")
-        dts_lines.append(f"    {method_name}({param_str}): {return_type};")
+        dts_lines.append(f"    {method_name}({args_str}): {return_type};")
     
-    # Obtener propiedades (getters)
-    for prop_name, prop in inspect.getmembers(cls, predicate=lambda p: isinstance(p, property)):
-        doc = inspect.getdoc(prop) or ""
-        ts_type = python_to_ts_type(prop.fget.__annotations__.get("return", Any))
-        dts_lines.append(f"    /**")
-        dts_lines.append(f"     * {doc}")
-        dts_lines.append(f"     */")
-        dts_lines.append(f"    get {prop_name}(): {ts_type};")
-    
+    # Cerrar definición de la clase
     dts_lines.append("  }")
     dts_lines.append("}")
+
     return "\n".join(dts_lines)
-
-
 
 
 
@@ -265,48 +261,54 @@ async def execute(
     Ejecuta una función específica dentro de la sesión.
     El session_id se proporciona como parte de la ruta.
     """
-    logger.debug(f"Recibiendo solicitud para ejecutar función en la sesión {session_id}.")
-    
-    async with session_lock:
-        if session_id not in sessions:
-            logger.error(f"Sesión no encontrada: {session_id}")
-            raise HTTPException(status_code=404, detail="Session not found.")
-        
-        modules_loaded = sessions[session_id]["modules"]
-        logger.debug(f"Módulos cargados para sesión {session_id}: {list(modules_loaded.keys())}")
-
-    # Buscar la función en los módulos cargados
-    target_module = None
-    for module_name, module_instance in modules_loaded.items():
-        if hasattr(module_instance, request.function):
-            target_module = module_instance
-            logger.debug(f"Función '{request.function}' encontrada en módulo '{module_name}'.")
-            break
-
-    if not target_module:
-        logger.error(f"Función '{request.function}' no encontrada en ningún módulo de la sesión {session_id}.")
-        raise HTTPException(
-            status_code=400,
-            detail=f"Function '{request.function}' not found in any module of session {session_id}"
-        )
-    
     try:
-        func = getattr(target_module, request.function)
-        logger.info(f"Ejecutando función '{request.function}' en sesión {session_id} con parámetros: {request.params}")
+        logger.debug(f"Recibiendo solicitud para ejecutar función en la sesión {session_id}.")
         
-        # Determinar si la función es asíncrona
-        if inspect.iscoroutinefunction(func):
-            logger.debug(f"La función '{request.function}' es asíncrona. Ejecutando con 'await'.")
-            result = await func(**request.params)
-        else:
-            logger.debug(f"La función '{request.function}' es síncrona. Ejecutando directamente.")
-            result = func(**request.params)
+        async with session_lock:
+            if session_id not in sessions:
+                logger.error(f"Sesión no encontrada: {session_id}")
+                return {"error": "Session not found."}
+            
+            modules_loaded = sessions[session_id]["modules"]
+            logger.debug(f"Módulos cargados para sesión {session_id}: {list(modules_loaded.keys())}")
+
+        # Buscar la función en los módulos cargados
+        target_module = None
+        for module_name, module_instance in modules_loaded.items():
+            if hasattr(module_instance, request.function):
+                target_module = module_instance
+                logger.debug(f"Función '{request.function}' encontrada en módulo '{module_name}'.")
+                break
+
+        if not target_module:
+            logger.error(f"Función '{request.function}' no encontrada en ningún módulo de la sesión {session_id}.")
+            return {
+                "error": f"Function '{request.function}' not found in any module of session {session_id}"
+            }
         
-        logger.info(f"Función '{request.function}' ejecutada exitosamente en sesión {session_id}. Resultado: {result}")
-        return {"result": result}
+        try:
+            func = getattr(target_module, request.function)
+            logger.info(f"Ejecutando función '{request.function}' en sesión {session_id} con parámetros: {request.params}")
+            
+            # Determinar si la función es asíncrona
+            if inspect.iscoroutinefunction(func):
+                logger.debug(f"La función '{request.function}' es asíncrona. Ejecutando con 'await'.")
+                result = await func(**request.params)
+            else:
+                logger.debug(f"La función '{request.function}' es síncrona. Ejecutando directamente.")
+                result = func(**request.params)
+            
+            logger.info(f"Función '{request.function}' ejecutada exitosamente en sesión {session_id}. Resultado: {result}")
+            return {"result": result}
+        except Exception as func_exception:
+            logger.error(f"Error al ejecutar la función '{request.function}' en sesión {session_id}: {func_exception}")
+            return {"error": f"Error executing function '{request.function}': {str(func_exception)}"}
     except Exception as e:
-        logger.error(f"Error al ejecutar la función '{request.function}' en sesión {session_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error inesperado: {e}")
+        return {"error": f"Unexpected error occurred: {str(e)}"}
+
+
+
 
 @app.post("/close-session/{session_id}/", status_code=200)
 async def close_session(
