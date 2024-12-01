@@ -1,0 +1,35 @@
+# Byte-compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+.env/
+
+# Distribution / Packaging
+build/
+dist/
+*.egg-info/
+
+# Logs and debug files
+*.log
+*.debug
+
+# IDE and editor settings
+.vscode/
+.idea/
+*.swp
+
+# Environment variables and sensitive files
+.env
+.secret
+
+# Test results
+*.pytest_cache/
+.coverage
+htmlcov/
+
+# Docker-related
+docker-compose.override.yml
+modules/

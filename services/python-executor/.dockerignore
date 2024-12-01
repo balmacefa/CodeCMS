@@ -1,0 +1,32 @@
+# Byte-compiled files
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+venv/
+.env/
+
+# Git files
+.git/
+.gitignore
+
+# Logs
+*.log
+
+# Test results
+*.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE and editor settings
+.vscode/
+.idea/
+
+# Distribution / Packaging
+build/
+dist/
+*.egg-info/
+
+# Temporary files
+*.swp
+modules/

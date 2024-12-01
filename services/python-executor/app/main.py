@@ -11,6 +11,7 @@ import logging
 from logging.handlers import RotatingFileHandler
 import asyncio  # Importación añadida
 from datetime import datetime  # Importación añadida
+import json
 
 # Configuración de Logging
 logger = logging.getLogger("fastapi_app")
@@ -38,6 +39,7 @@ logger.addHandler(file_handler)
 logger.addHandler(console_handler)
 
 app = FastAPI()
+logger.debug("Aplicación FastAPI inicializada.")
 
 # Directorio base para almacenar los módulos de cada sesión
 BASE_MODULES_DIR = "./modules"
@@ -46,6 +48,8 @@ BASE_MODULES_DIR = "./modules"
 if not os.path.exists(BASE_MODULES_DIR):
     os.makedirs(BASE_MODULES_DIR)
     logger.debug(f"Creado directorio base para módulos: {BASE_MODULES_DIR}")
+else:
+    logger.debug(f"Directorio base para módulos ya existe: {BASE_MODULES_DIR}")
 
 # Modelos de datos
 
@@ -80,6 +84,7 @@ def get_module_files(session_id: str, module_name: str) -> List[str]:
     """
     module_path = os.path.join(BASE_MODULES_DIR, session_id, module_name)
     file_list = []
+    logger.debug(f"Buscando archivos en: {module_path}")
     if os.path.isdir(module_path):
         for root, dirs, files in os.walk(module_path):
             for file in files:
@@ -87,6 +92,9 @@ def get_module_files(session_id: str, module_name: str) -> List[str]:
                 rel_dir = os.path.relpath(root, module_path)
                 rel_file = os.path.join(rel_dir, file) if rel_dir != '.' else file
                 file_list.append(rel_file)
+                logger.debug(f"Archivo encontrado: {rel_file}")
+    else:
+        logger.warning(f"El directorio del módulo no existe: {module_path}")
     return file_list
 
 @app.post("/start-session/", response_model=StartSessionResponse)
@@ -104,6 +112,8 @@ async def start_session(request: StartSessionRequest):
     
     return StartSessionResponse(session_id=session_id)
 
+import inspect
+
 @app.post("/upload-modules/{session_id}/", status_code=200)
 async def upload_modules(
     session_id: str,
@@ -114,45 +124,9 @@ async def upload_modules(
     Sube módulos al servidor asociados a una sesión existente.
     El session_id se proporciona como parte de la ruta.
     """
-    # Log de los detalles de la petición
-    logger.debug("----- Inicio de la petición -----")
-    
-    # Método y URL
-    logger.info(f"Método: {req.method}")
-    logger.info(f"URL: {req.url}")
-
-    # Path Parameters
-    logger.info(f"Path Parameter - session_id: {session_id}")
-
-    # Query Parameters
-    if req.query_params:
-        logger.info(f"Query Parameters: {dict(req.query_params)}")
-    else:
-        logger.info("No hay Query Parameters.")
-
-    # Headers (filtrando información sensible)
-    sensitive_headers = ["authorization", "cookie"]
-    filtered_headers = {
-        k: ("***" if k.lower() in sensitive_headers else v)
-        for k, v in req.headers.items()
-    }
-    logger.info(f"Headers: {filtered_headers}")
-
-    # Cuerpo de la petición (Body)
-    try:
-        # Dado que ya tienes el objeto `request` como `UploadModulesRequest`,
-        # puedes loggear sus contenidos directamente.
-        logger.debug(f"Cuerpo de la petición: {request.json()}")  # Asegúrate de que `UploadModulesRequest` tenga método `json()`
-    except Exception as e:
-        logger.error(f"Error al loggear el cuerpo de la petición: {e}")
-
-    logger.debug("----- Fin de los detalles de la petición -----")
-    
-    # Continuar con el procesamiento normal
     logger.debug(f"Inicio de la función upload_modules para sesión {session_id}.")
     
     async with session_lock:
-        logger.debug(f"Verificando existencia de la sesión {session_id}.")
         if session_id not in sessions:
             logger.error(f"Sesión no encontrada: {session_id}")
             raise HTTPException(status_code=404, detail="Session not found.")
@@ -162,18 +136,13 @@ async def upload_modules(
     if not os.path.exists(session_path):
         os.makedirs(session_path)
         logger.debug(f"Creado directorio para sesión: {session_path}")
-    else:
-        logger.debug(f"Directorio para sesión ya existe: {session_path}")
     
     # Guardar los archivos de los módulos
     for module in request.modules:
-        logger.debug(f"Procesando módulo: {module.name}")
         module_path = os.path.join(session_path, module.name)
         if not os.path.exists(module_path):
             os.makedirs(module_path)
             logger.debug(f"Creado directorio para módulo: {module_path}")
-        else:
-            logger.debug(f"Directorio para módulo ya existe: {module_path}")
         
         for filename, content in module.files.items():
             file_path = os.path.join(module_path, filename)
@@ -185,9 +154,8 @@ async def upload_modules(
                 logger.error(f"Error al guardar el archivo {file_path}: {e}")
                 raise HTTPException(status_code=500, detail=f"Error saving file {filename}: {e}")
     
-    # Cargar y ejecutar main() una sola vez por módulo
+    # Cargar y ejecutar main() y eventos opcionales
     async with session_lock:
-        logger.debug(f"Cargando módulos para sesión {session_id}.")
         modules_loaded = sessions[session_id]["modules"]
         for module in request.modules:
             module_dir = os.path.join(session_path, module.name)
@@ -198,11 +166,43 @@ async def upload_modules(
                     loaded_module = importlib.util.module_from_spec(spec)
                     spec.loader.exec_module(loaded_module)
                     logger.debug(f"Módulo cargado dinámicamente: {main_py}")
-                    if hasattr(loaded_module, "main"):
-                        logger.debug(f"Ejecutando función main para módulo: {module.name}")
-                        module_instance = loaded_module.main(modules_loaded)
+                    
+                    # Buscar una clase con el método main
+                    class_with_main = None
+                    for attr_name in dir(loaded_module):
+                        attr = getattr(loaded_module, attr_name)
+                        if isinstance(attr, type):  # Es una clase
+                            if hasattr(attr, "main") and callable(getattr(attr, "main")):
+                                class_with_main = attr
+                                break
+                    
+                    if class_with_main:
+                        logger.debug(f"Ejecutando método 'main' de la clase en el módulo: {module.name}")
+                        module_instance = class_with_main().main()
                         modules_loaded[module.name] = module_instance
-                        logger.info(f"Función main ejecutada para módulo: {module.name}")
+                        logger.info(f"Método 'main' ejecutado para módulo: {module.name}")
+                        
+                        # Llamar a eventos opcionales
+                        if hasattr(module_instance, "onInit"):
+                            on_init = getattr(module_instance, "onInit")
+                            if inspect.iscoroutinefunction(on_init):
+                                logger.debug(f"Ejecutando evento asíncrono 'onInit' para módulo: {module.name}")
+                                await on_init()
+                            else:
+                                logger.debug(f"Ejecutando evento síncrono 'onInit' para módulo: {module.name}")
+                                on_init()
+                            logger.info(f"Evento 'onInit' ejecutado para módulo: {module.name}")
+                        
+                        if hasattr(module_instance, "onDestroy"):
+                            on_destroy = getattr(module_instance, "onDestroy")
+                            if inspect.iscoroutinefunction(on_destroy):
+                                logger.debug(f"Evento asíncrono 'onDestroy' registrado para módulo: {module.name}")
+                                # Registra `onDestroy` para su ejecución posterior si es necesario
+                            else:
+                                logger.debug(f"Evento síncrono 'onDestroy' registrado para módulo: {module.name}")
+                                # Registra `onDestroy` para su ejecución posterior
+                    else:
+                        logger.warning(f"No se encontró ninguna clase con el método 'main' en el módulo: {module.name}")
                 except Exception as e:
                     logger.error(f"Error al cargar o ejecutar el módulo {module.name}: {e}")
                     raise HTTPException(status_code=500, detail=f"Error loading module {module.name}: {e}")
@@ -214,6 +214,7 @@ async def upload_modules(
     
     logger.debug(f"Finalizando función upload_modules para sesión {session_id}.")
     return {"status": f"Módulos subidos correctamente a la sesión {session_id}"}
+
 
 @app.post("/execute/{session_id}/", status_code=200)
 async def execute(
@@ -262,31 +263,66 @@ async def execute(
 @app.post("/close-session/{session_id}/", status_code=200)
 async def close_session(
     session_id: str,
-    request: CloseSessionRequest
+    request: CloseSessionRequest,
+    req: Request  # Objeto Request para obtener información adicional
 ):
     """
-    Cierra una sesión activa, liberando recursos en el servidor.
-    El session_id se proporciona como parte de la ruta.
+    Cierra una sesión activa, ejecutando `onDestroy` en módulos si existe, y liberando recursos en el servidor.
     """
-    logger.debug(f"Recibiendo solicitud para cerrar la sesión {session_id}.")
+    logger.info(f"Solicitud recibida para cerrar la sesión {session_id}.")
+    
+    # Log de encabezados
+    headers = dict(req.headers)
+    logger.debug(f"Encabezados de la solicitud: {json.dumps(headers, indent=2)}")
+    
+    # Log de parámetros
+    logger.debug(f"Parámetros de la solicitud: {request.dict()}")
     
     async with session_lock:
         if session_id not in sessions:
             logger.error(f"Sesión no encontrada: {session_id}")
             raise HTTPException(status_code=404, detail="Session not found.")
         
-        # Eliminar la sesión
+        logger.info(f"Sesión encontrada: {session_id}. Preparándose para ejecutar 'onDestroy' en los módulos.")
+
+        # Ejecutar `onDestroy` en cada módulo de la sesión si existe
+        modules_loaded = sessions[session_id]["modules"]
+        for module_name, module_instance in modules_loaded.items():
+            logger.debug(f"Procesando módulo: {module_name}")
+            
+            if hasattr(module_instance, "onDestroy"):
+                on_destroy = getattr(module_instance, "onDestroy")
+                try:
+                    if inspect.iscoroutinefunction(on_destroy):
+                        logger.info(f"Ejecutando evento asíncrono 'onDestroy' para módulo: {module_name}")
+                        await on_destroy()
+                    else:
+                        logger.info(f"Ejecutando evento síncrono 'onDestroy' para módulo: {module_name}")
+                        on_destroy()
+                    logger.info(f"Evento 'onDestroy' ejecutado correctamente para módulo: {module_name}")
+                except Exception as e:
+                    logger.error(f"Error al ejecutar 'onDestroy' en módulo {module_name}: {e}")
+            else:
+                logger.debug(f"Módulo {module_name} no tiene un método 'onDestroy'.")
+        
+        logger.info(f"Todos los módulos procesados para sesión {session_id}. Procediendo a limpiar recursos.")
+
+        # Eliminar la sesión del diccionario
         del sessions[session_id]
         logger.info(f"Sesión {session_id} eliminada del diccionario de sesiones.")
     
     # Eliminar los archivos de la sesión
     session_path = os.path.join(BASE_MODULES_DIR, session_id)
     if os.path.exists(session_path):
-        shutil.rmtree(session_path)
-        logger.info(f"Archivos de la sesión {session_id} eliminados.")
+        try:
+            shutil.rmtree(session_path)
+            logger.info(f"Archivos de la sesión {session_id} eliminados del sistema de archivos.")
+        except Exception as e:
+            logger.error(f"Error al eliminar archivos de la sesión {session_id}: {e}")
     else:
         logger.warning(f"Ruta de sesión {session_id} no encontrada para eliminar archivos.")
     
+    logger.info(f"Sesión {session_id} cerrada exitosamente.")
     return {"status": f"Session {session_id} closed successfully."}
 
 @app.get("/", status_code=200)
@@ -315,9 +351,19 @@ async def root():
             })
     
     logger.info(f"Estado del servidor solicitado. Sesiones activas: {active_sessions}")
+    logger.debug(f"Información de sesiones: {sessions_info}")
     return {
         "status": "Servidor en funcionamiento",
         "timestamp": datetime.utcnow().isoformat() + "Z",
         "active_sessions": active_sessions,
         "sessions": sessions_info  # Información detallada de las sesiones
     }
+
+@app.get("/debug-sessions/", status_code=200)
+async def debug_sessions():
+    """
+    Endpoint temporal para inspeccionar la estructura de 'sessions'.
+    """
+    logger.debug("Recibiendo solicitud para debug de sesiones.")
+    async with session_lock:
+        return sessions
