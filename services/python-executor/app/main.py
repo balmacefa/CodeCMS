@@ -181,44 +181,38 @@ async def start_session(request: StartSessionRequest):
     return StartSessionResponse(session_id=session_id)
 
 
-import inspect
-
-
 @app.post("/upload-modules/{session_id}/", status_code=200)
 async def upload_modules(session_id: str, request: UploadModulesRequest, req: Request):
     """
-    Sube módulos al servidor asociados a una sesión existente.
-    Genera un archivo `.d.ts` basado en las clases y métodos encontrados.
+    Uploads modules to the server associated with an existing session.
+    Instantiates the class found in the module, executes an optional initialization function,
+    and stores the instance for later use.
     """
-    logger.debug(f"Inicio de la función upload_modules para sesión {session_id}.")
+    logger.debug(f"Starting upload_modules for session {session_id}.")
 
     async with session_lock:
         if session_id not in sessions:
-            logger.error(f"Sesión no encontrada: {session_id}")
+            logger.error(f"Session not found: {session_id}")
             raise HTTPException(status_code=404, detail="Session not found.")
-        logger.debug(f"Sesión {session_id} encontrada.")
+        logger.debug(f"Session {session_id} found.")
 
     session_path = os.path.join(BASE_MODULES_DIR, session_id)
-    if not os.path.exists(session_path):
-        os.makedirs(session_path)
-        logger.debug(f"Creado directorio para sesión: {session_path}")
+    os.makedirs(session_path, exist_ok=True)
 
     dts_content = []
 
     for module in request.modules:
         module_path = os.path.join(session_path, module.name)
-        if not os.path.exists(module_path):
-            os.makedirs(module_path)
-            logger.debug(f"Creado directorio para módulo: {module_path}")
+        os.makedirs(module_path, exist_ok=True)
 
         for filename, content in module.files.items():
             file_path = os.path.join(module_path, filename)
             try:
                 with open(file_path, "w") as f:
                     f.write(content)
-                logger.debug(f"Archivo guardado: {file_path}")
+                logger.debug(f"Saved file: {file_path}")
             except Exception as e:
-                logger.error(f"Error al guardar el archivo {file_path}: {e}")
+                logger.error(f"Error saving file {file_path}: {e}")
                 raise HTTPException(
                     status_code=500, detail=f"Error saving file {filename}: {e}"
                 )
@@ -233,39 +227,70 @@ async def upload_modules(session_id: str, request: UploadModulesRequest, req: Re
                     spec = importlib.util.spec_from_file_location(module.name, main_py)
                     loaded_module = importlib.util.module_from_spec(spec)
                     spec.loader.exec_module(loaded_module)
-                    logger.debug(f"Módulo cargado dinámicamente: {main_py}")
+                    logger.debug(f"Dynamically loaded module: {main_py}")
 
-                    # Buscar clases en el módulo y generar `.d.ts`
+                    # **Find and instantiate the class**
+                    module_class = None
                     for attr_name in dir(loaded_module):
                         attr = getattr(loaded_module, attr_name)
-                        if isinstance(attr, type):  # Es una clase
-                            dts_content.append(generate_dts_string(module.name, attr))
+                        if isinstance(attr, type):  # It's a class
+                            module_class = attr
+                            break
+
+                    if module_class is None:
+                        logger.error(f"No class found in module {module.name}")
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"No class found in module {module.name}",
+                        )
+
+                    # Instantiate the class
+                    instance = module_class()
+                    logger.debug(
+                        f"Instantiated class {module_class.__name__} from module {module.name}"
+                    )
+
+                    # Check for optional initialization function and execute it
+                    if hasattr(instance, "onLoad"):
+                        on_load_method = getattr(instance, "onLoad")
+                        if inspect.iscoroutinefunction(on_load_method):
+                            await on_load_method()
+                            logger.debug(
+                                f"Executed async 'onLoad' in instance of {module.name}"
+                            )
+                        else:
+                            on_load_method()
+                            logger.debug(
+                                f"Executed 'onLoad' in instance of {module.name}"
+                            )
+
+                    # Store the instance in the session
+                    modules_loaded[module.name] = instance
+
+                    # Generate `.d.ts` content based on the class
+                    dts_content.append(generate_dts_string(module.name, module_class))
 
                 except Exception as e:
                     logger.error(
-                        f"Error al cargar o ejecutar el módulo {module.name}: {e}"
+                        f"Error loading or executing module {module.name}: {e}"
                     )
                     raise HTTPException(
                         status_code=500,
                         detail=f"Error loading module {module.name}: {e}",
                     )
             else:
-                logger.warning(
-                    f"Archivo main.py no encontrado para módulo: {module.name}"
-                )
+                logger.warning(f"main.py not found for module: {module.name}")
 
-        # TODO: fix hay un errode logica de programacion,
-    sessions[session_id]["modules"] = modules_loaded
-    logger.info(
-        f"Módulos cargados para sesión {session_id}: {[m.name for m in request.modules]}"
-    )
+        logger.info(
+            f"Modules loaded for session {session_id}: {[module.name for module in request.modules]}"
+        )
 
-    # Unir el contenido del archivo `.d.ts`
+    # Combine the `.d.ts` content
     dts_final_content = "\n\n".join(dts_content)
 
-    logger.debug(f"Finalizando función upload_modules para sesión {session_id}.")
+    logger.debug(f"Finished upload_modules for session {session_id}.")
     return {
-        "status": f"Módulos subidos correctamente a la sesión {session_id}",
+        "status": f"Modules successfully uploaded to session {session_id}",
         "dts_content": dts_final_content,
     }
 
