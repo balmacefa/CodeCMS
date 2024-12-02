@@ -224,6 +224,9 @@ async def upload_modules(session_id: str, request: UploadModulesRequest, req: Re
             main_py = os.path.join(module_dir, "main.py")
             if os.path.isfile(main_py):
                 try:
+                    # TODO: We need to isolate this , wayme add a sub virtual env, to allow users to install other pip packages.
+                    # But allow us to comunicate with it , to execute or call functions of the instance.
+
                     spec = importlib.util.spec_from_file_location(module.name, main_py)
                     loaded_module = importlib.util.module_from_spec(spec)
                     spec.loader.exec_module(loaded_module)
