@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Script Manager Dashboard</title>
+    <!-- Bulma CSS -->
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css"
+    />
+    <!-- Iconos (opcional) -->
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@5.15.3/css/all.min.css"
+    />
+    <style>
+      .sidebar {
+        min-height: 100vh;
+        box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1);
+      }
+      .dashboard-content {
+        padding: 2rem;
+      }
+      pre {
+        background: #f5f5f5;
+        padding: 1rem;
+        border-radius: 4px;
+        overflow: auto;
+        max-height: 300px;
+      }
+    </style>
+  </head>
+
+  <body>
+    <!-- Navbar principal -->
+    <nav class="navbar is-dark" role="navigation" aria-label="main navigation">
+      <div class="navbar-brand">
+        <a class="navbar-item" href="#">
+          <strong>Script Manager</strong>
+        </a>
+        <a
+          role="button"
+          class="navbar-burger"
+          aria-label="menu"
+          aria-expanded="false"
+          data-target="navbarBasic"
+        >
+          <span aria-hidden="true"></span>
+          <span aria-hidden="true"></span>
+          <span aria-hidden="true"></span>
+        </a>
+      </div>
+
+      <div id="navbarBasic" class="navbar-menu">
+        <div class="navbar-start">
+          <a class="navbar-item" href="#upload"> Upload </a>
+          <a class="navbar-item" href="#list"> List </a>
+          <a class="navbar-item" href="#call"> Call </a>
+          <a class="navbar-item" href="#update"> Update </a>
+          <a class="navbar-item" href="#delete"> Delete </a>
+        </div>
+      </div>
+    </nav>
+
+    <!-- Layout con sidebar y contenido principal -->
+    <div class="columns m-0">
+      <!-- Sidebar -->
+      <aside class="column is-2 sidebar has-background-light p-3">
+        <nav class="menu">
+          <p class="menu-label">Scripts</p>
+          <ul class="menu-list">
+            <li><a href="#upload">Upload Script</a></li>
+            <li><a href="#list">List Scripts</a></li>
+            <li><a href="#call">Call Script</a></li>
+            <li><a href="#update">Update Script</a></li>
+            <li><a href="#delete">Delete Script</a></li>
+          </ul>
+        </nav>
+      </aside>
+
+      <!-- Contenido principal -->
+      <div class="column dashboard-content">
+        <!-- Mensajes globales -->
+        <div id="global-message" class="notification is-hidden"></div>
+
+        <!-- Upload Script -->
+        <section id="upload">
+          <h2 class="title">Upload Script</h2>
+          <form id="upload-form">
+            <div class="field">
+              <label class="label">Script Content</label>
+              <div class="control">
+                <textarea
+                  class="textarea"
+                  id="script-content"
+                  rows="6"
+                  placeholder="Write your Python script code here..."
+                ></textarea>
+              </div>
+            </div>
+            <div class="control mt-2">
+              <button class="button is-primary" type="submit">Upload</button>
+            </div>
+          </form>
+          <div class="mt-3">
+            <strong>Response:</strong>
+            <pre id="upload-response"></pre>
+          </div>
+        </section>
+        <hr />
+
+        <!-- List Scripts -->
+        <section id="list">
+          <h2 class="title">List Scripts</h2>
+          <button class="button is-info" id="list-btn">Get Scripts</button>
+          <div class="mt-3">
+            <strong>Response:</strong>
+            <pre id="list-response"></pre>
+          </div>
+        </section>
+        <hr />
+
+        <!-- Call Script -->
+        <section id="call">
+          <h2 class="title">Call Script</h2>
+          <form id="call-form">
+            <div class="field">
+              <label class="label">Script ID (hash)</label>
+              <div class="control">
+                <input
+                  class="input"
+                  type="text"
+                  id="call-script-id"
+                  placeholder="e.g. b54bbc1a3b..."
+                />
+              </div>
+            </div>
+            <div class="field">
+              <label class="label">Function Name</label>
+              <div class="control">
+                <input
+                  class="input"
+                  type="text"
+                  id="call-function-name"
+                  placeholder="e.g. my_function"
+                />
+              </div>
+            </div>
+            <div class="field">
+              <label class="label">Params (JSON)</label>
+              <div class="control">
+                <textarea
+                  class="textarea"
+                  id="call-params"
+                  rows="4"
+                  placeholder='{"param1": 123, "param2": "abc"}'
+                ></textarea>
+              </div>
+            </div>
+            <div class="control mt-2">
+              <button class="button is-primary" type="submit">Call</button>
+            </div>
+          </form>
+          <div class="mt-3">
+            <strong>Response:</strong>
+            <pre id="call-response"></pre>
+          </div>
+        </section>
+        <hr />
+
+        <!-- Update Script -->
+        <section id="update">
+          <h2 class="title">Update Script</h2>
+          <form id="update-form">
+            <div class="field">
+              <label class="label">Script ID (hash)</label>
+              <div class="control">
+                <input
+                  class="input"
+                  type="text"
+                  id="update-script-id"
+                  placeholder="e.g. b54bbc1a3b..."
+                />
+              </div>
+            </div>
+            <div class="field">
+              <label class="label">New Script Content</label>
+              <div class="control">
+                <textarea
+                  class="textarea"
+                  id="update-script-content"
+                  rows="6"
+                  placeholder="Updated Python code here..."
+                ></textarea>
+              </div>
+            </div>
+            <div class="control mt-2">
+              <button class="button is-primary" type="submit">Update</button>
+            </div>
+          </form>
+          <div class="mt-3">
+            <strong>Response:</strong>
+            <pre id="update-response"></pre>
+          </div>
+        </section>
+        <hr />
+
+        <!-- Delete Script -->
+        <section id="delete">
+          <h2 class="title">Delete Script</h2>
+          <form id="delete-form">
+            <div class="field">
+              <label class="label">Script ID (hash)</label>
+              <div class="control">
+                <input
+                  class="input"
+                  type="text"
+                  id="delete-script-id"
+                  placeholder="e.g. b54bbc1a3b..."
+                />
+              </div>
+            </div>
+            <div class="control mt-2">
+              <button class="button is-danger" type="submit">Delete</button>
+            </div>
+          </form>
+          <div class="mt-3">
+            <strong>Response:</strong>
+            <pre id="delete-response"></pre>
+          </div>
+        </section>
+      </div>
+      <!-- Fin .dashboard-content -->
+    </div>
+    <!-- Fin .columns -->
+
+    <!-- Script para togglear el burger menu en móvil -->
+    <script>
+      document.addEventListener("DOMContentLoaded", () => {
+        // Navbar burger
+        const $navbarBurgers = Array.prototype.slice.call(
+          document.querySelectorAll(".navbar-burger"),
+          0
+        );
+        if ($navbarBurgers.length > 0) {
+          $navbarBurgers.forEach((el) => {
+            el.addEventListener("click", () => {
+              const target = el.dataset.target;
+              const $target = document.getElementById(target);
+              el.classList.toggle("is-active");
+              $target.classList.toggle("is-active");
+            });
+          });
+        }
+
+        // ------------------
+        //   Upload Script
+        // ------------------
+        const uploadForm = document.getElementById("upload-form");
+        const uploadResponse = document.getElementById("upload-response");
+        uploadForm.addEventListener("submit", async (event) => {
+          event.preventDefault();
+          const scriptContent = document.getElementById("script-content").value;
+
+          // Llamada al endpoint /upload-script/
+          try {
+            const res = await fetch("/upload-script/", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ script: scriptContent }),
+            });
+            const data = await res.json();
+            uploadResponse.textContent = JSON.stringify(data, null, 2);
+          } catch (error) {
+            uploadResponse.textContent = error.toString();
+          }
+        });
+
+        // ------------------
+        //   List Scripts
+        // ------------------
+        const listBtn = document.getElementById("list-btn");
+        const listResponse = document.getElementById("list-response");
+        listBtn.addEventListener("click", async () => {
+          try {
+            const res = await fetch("/scripts/");
+            const data = await res.json();
+            listResponse.textContent = JSON.stringify(data, null, 2);
+          } catch (error) {
+            listResponse.textContent = error.toString();
+          }
+        });
+
+        // ------------------
+        //   Call Script
+        // ------------------
+        const callForm = document.getElementById("call-form");
+        const callResponse = document.getElementById("call-response");
+        callForm.addEventListener("submit", async (event) => {
+          event.preventDefault();
+          const scriptId = document.getElementById("call-script-id").value;
+          const functionName =
+            document.getElementById("call-function-name").value;
+          const paramsText = document.getElementById("call-params").value;
+
+          let paramsObj = {};
+          try {
+            paramsObj = JSON.parse(paramsText);
+          } catch (e) {
+            callResponse.textContent = `Error parseando JSON en "Params": ${e}`;
+            return;
+          }
+
+          try {
+            const res = await fetch("/call-script/", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                id: scriptId,
+                function_name: functionName,
+                params: paramsObj,
+              }),
+            });
+            const data = await res.json();
+            callResponse.textContent = JSON.stringify(data, null, 2);
+          } catch (error) {
+            callResponse.textContent = error.toString();
+          }
+        });
+
+        // ------------------
+        //   Update Script
+        // ------------------
+        const updateForm = document.getElementById("update-form");
+        const updateResponse = document.getElementById("update-response");
+        updateForm.addEventListener("submit", async (event) => {
+          event.preventDefault();
+          const scriptId = document.getElementById("update-script-id").value;
+          const newContent = document.getElementById(
+            "update-script-content"
+          ).value;
+
+          try {
+            const res = await fetch(`/update-script/${scriptId}`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                new_script: newContent,
+              }),
+            });
+            const data = await res.json();
+            updateResponse.textContent = JSON.stringify(data, null, 2);
+          } catch (error) {
+            updateResponse.textContent = error.toString();
+          }
+        });
+
+        // ------------------
+        //   Delete Script
+        // ------------------
+        const deleteForm = document.getElementById("delete-form");
+        const deleteResponse = document.getElementById("delete-response");
+        deleteForm.addEventListener("submit", async (event) => {
+          event.preventDefault();
+          const scriptId = document.getElementById("delete-script-id").value;
+
+          try {
+            const res = await fetch(`/delete-script/${scriptId}`, {
+              method: "POST",
+            });
+            const data = await res.json();
+            deleteResponse.textContent = JSON.stringify(data, null, 2);
+          } catch (error) {
+            deleteResponse.textContent = error.toString();
+          }
+        });
+      });
+    </script>
+  </body>
+</html>

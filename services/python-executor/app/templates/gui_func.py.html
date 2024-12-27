@@ -1,0 +1,210 @@
+{% raw %}<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Script Manager</title>
+    <!-- Cargar Bulma -->
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css"
+    />
+
+    <!-- Estilos personalizados (opcionales) -->
+    <style>
+      .main-container {
+        margin: 2rem auto;
+        max-width: 800px;
+      }
+      .section-title {
+        margin-bottom: 1rem;
+        margin-top: 2rem;
+      }
+      .notification {
+        margin-top: 1rem;
+      }
+    </style>
+  </head>
+  <body>
+    <section class="section main-container">
+      <h1 class="title">Gestor de Scripts</h1>
+      <p class="subtitle">Sube, actualiza, ejecuta y elimina scripts Python.</p>
+
+      <!-- VISIBILIDAD DE ESTADO DEL SISTEMA: mostramos mensajes o errores -->
+      {% if msg %}
+      <div class="notification is-success">{{ msg }}</div>
+      {% endif %} {% if error %}
+      <div class="notification is-danger">{{ error }}</div>
+      {% endif %}
+
+      <hr />
+
+      <!-- 1) FORMULARIO PARA SUBIR SCRIPT -->
+      <div class="box">
+        <h2 class="title is-4 section-title">Subir Script</h2>
+        <form action="/upload-script/" method="post">
+          <!-- Asume que tu endpoint de subida acepta POST con 'script' en el body -->
+          <div class="field">
+            <label class="label">Contenido del script (Python)</label>
+            <div class="control">
+              <textarea
+                class="textarea"
+                name="script"
+                rows="5"
+                placeholder="def main(x):&#10;    return x * 2"
+                required
+              ></textarea>
+            </div>
+          </div>
+          <div class="control">
+            <button class="button is-primary" type="submit">Subir</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- 2) FORMULARIO PARA LISTAR SCRIPTS (puede ser solo un botón) -->
+      <div class="box">
+        <h2 class="title is-4 section-title">Listar Scripts</h2>
+        <form action="/scripts/" method="get">
+          <!-- GET a /scripts/ que devuelva JSON o HTML, segun tu implementacion -->
+          <button class="button is-info" type="submit">
+            Ver Lista de Scripts
+          </button>
+        </form>
+        <!-- Ejemplo: mostrar aquí los IDs que pasaste desde backend en 'script_ids' -->
+        {% if script_ids %}
+        <p class="mt-3">
+          <strong>Scripts en el servidor:</strong>
+        </p>
+        <ul>
+          {% for sid in script_ids %}
+          <li>- {{ sid }}</li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+      </div>
+
+      <!-- 3) FORMULARIO PARA LLAMAR UNA FUNCIÓN DE UN SCRIPT -->
+      <div class="box">
+        <h2 class="title is-4 section-title">Ejecutar Función</h2>
+        <form action="/call-script/" method="post">
+          <!-- Asume que tu endpoint /call-script/ espera JSON,
+             podrías usar un approach con JS o con name/value pairs -->
+
+          <!-- ID del script (hash MD5) -->
+          <div class="field">
+            <label class="label">ID del Script</label>
+            <div class="control">
+              <input
+                class="input"
+                type="text"
+                name="id"
+                placeholder="p.ej. 4c41d2..."
+                required
+              />
+            </div>
+          </div>
+
+          <!-- Nombre de la función -->
+          <div class="field">
+            <label class="label">Nombre de la función</label>
+            <div class="control">
+              <input
+                class="input"
+                type="text"
+                name="function_name"
+                placeholder="main"
+                required
+              />
+            </div>
+          </div>
+
+          <!-- Parámetros en JSON -->
+          <div class="field">
+            <label class="label">Parámetros (JSON)</label>
+            <div class="control">
+              <textarea
+                class="textarea"
+                name="params"
+                rows="3"
+                placeholder='{"x": 5, "y": 10}'
+                required
+              ></textarea>
+            </div>
+          </div>
+
+          <div class="control">
+            <button class="button is-primary" type="submit">Ejecutar</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- 4) FORMULARIO PARA ACTUALIZAR/MODIFICAR UN SCRIPT EXISTENTE -->
+      <div class="box">
+        <h2 class="title is-4 section-title">Actualizar Script</h2>
+        <form action="/update-script/" method="post">
+          <!-- Asume que tu endpoint es /update-script/<script_id> (PUT),
+             aquí mostramos un ejemplo simplificado usando POST (o AJAX) -->
+          <div class="field">
+            <label class="label">ID del Script</label>
+            <div class="control">
+              <input
+                class="input"
+                type="text"
+                name="script_id"
+                placeholder="4c41d2..."
+                required
+              />
+            </div>
+          </div>
+          <div class="field">
+            <label class="label">Nuevo Contenido del Script</label>
+            <div class="control">
+              <textarea
+                class="textarea"
+                name="new_script"
+                rows="5"
+                placeholder="def main(x):&#10;    return x + 10"
+                required
+              ></textarea>
+            </div>
+          </div>
+          <div class="control">
+            <button class="button is-warning" type="submit">Actualizar</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- 5) FORMULARIO PARA ELIMINAR SCRIPT -->
+      <div class="box">
+        <h2 class="title is-4 section-title">Eliminar Script</h2>
+        <form action="/delete-script/" method="post">
+          <!-- Asume que tu endpoint es /delete-script/<script_id> (DELETE) -->
+          <div class="field">
+            <label class="label">ID del Script</label>
+            <div class="control">
+              <input
+                class="input"
+                type="text"
+                name="script_id"
+                placeholder="4c41d2..."
+                required
+              />
+            </div>
+          </div>
+          <div class="control">
+            <button class="button is-danger" type="submit">Eliminar</button>
+          </div>
+        </form>
+      </div>
+
+      <hr />
+      <p class="has-text-grey">
+        <em
+          >Usabilidad basada en heurísticas de Nielsen: diseño minimalista,
+          control y libertad del usuario, etc.</em
+        >
+      </p>
+    </section>
+  </body>
+</html>
+{% endraw %}
