@@ -4,13 +4,12 @@ import tempfile
 import os
 import asyncio
 import logging
-
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 from typing import Dict, Any, List
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse
-
+from typing import Dict, Any, Optional
 # ==========================
 # Configuración de Logging
 # ==========================
@@ -24,11 +23,15 @@ console_handler.setFormatter(logging.Formatter(
 ))
 logger.addHandler(console_handler)
 
+
+# logs= []
+
 # Función auxiliar para logs asíncronos
 async def log_message(message: str):
     """
     Envía un mensaje al logger en un hilo aparte para no bloquear el event loop.
     """
+    # logs.append(message)
     await asyncio.to_thread(logger.info, message)
 
 # ==========================
@@ -51,12 +54,11 @@ class UploadScriptResponse(BaseModel):
     """Devuelve el hash MD5 (id) del script subido."""
     id: str
 
-
 class ExecuteScriptRequest(BaseModel):
-    """Modelo para llamar una función de un script ya almacenado."""
-    id: str                 # Hash MD5 del script
-    function_name: str      # Nombre de la función a ejecutar
-    params: Dict[str, Any]  # Parámetros para la función
+    """Modelo para llamar a una función de un script ya almacenado."""
+    id: str
+    function_name: str
+    params: Optional[Dict[str, Any]] = None
 
 
 class ExecuteScriptResponse(BaseModel):
@@ -70,6 +72,9 @@ class UpdateScriptRequest(BaseModel):
 
 
 # ========== Endpoints ==========
+@app.get("/logs/",)
+async def get_logs():
+    return '[]'
 
 @app.post("/upload-script/", response_model=UploadScriptResponse)
 async def upload_script(request: UploadScriptRequest):

@@ -11,3 +11,8 @@ python-dotenv
 watchdog
 debugpy
 jinja2
+langchain_openai
+langsmith
+numexpr
+duckduckgo-search
+langchain-community

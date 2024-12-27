@@ -28,6 +28,28 @@
         overflow: auto;
         max-height: 300px;
       }
+
+      /* En la parte de <style> */
+      .dark-mode {
+        background-color: #121212;
+        color: #ffffff;
+      }
+
+      /* Ejemplo: Cambiamos también los fondos de la sidebar y la navbar */
+      .dark-mode .sidebar {
+        background-color: #272727; /* Ajusta el color a tu gusto */
+        color: #ffffff;
+      }
+
+      .dark-mode .navbar {
+        background-color: #1f1f1f;
+      }
+
+      /* Ajustar otros elementos que lo requieran */
+      .dark-mode .navbar a.navbar-item,
+      .dark-mode .menu-list a {
+        color: #ffffff;
+      }
     </style>
   </head>
 
@@ -53,11 +75,21 @@
 
       <div id="navbarBasic" class="navbar-menu">
         <div class="navbar-start">
-          <a class="navbar-item" href="#upload"> Upload </a>
-          <a class="navbar-item" href="#list"> List </a>
-          <a class="navbar-item" href="#call"> Call </a>
-          <a class="navbar-item" href="#update"> Update </a>
-          <a class="navbar-item" href="#delete"> Delete </a>
+          <a class="navbar-item" href="#upload">Upload</a>
+          <a class="navbar-item" href="#list">List</a>
+          <a class="navbar-item" href="#call">Call</a>
+          <a class="navbar-item" href="#update">Update</a>
+          <a class="navbar-item" href="#delete">Delete</a>
+          <a class="navbar-item" href="#logs">Logs</a>
+        </div>
+
+        <!-- Aquí agregamos el botón para togglear dark mode -->
+        <div class="navbar-end">
+          <div class="navbar-item">
+            <button class="button is-light" id="dark-mode-toggle">
+              Dark Mode
+            </button>
+          </div>
         </div>
       </div>
     </nav>
@@ -74,13 +106,14 @@
             <li><a href="#call">Call Script</a></li>
             <li><a href="#update">Update Script</a></li>
             <li><a href="#delete">Delete Script</a></li>
+            <li><a href="#logs">View Logs</a></li>
           </ul>
         </nav>
       </aside>
 
       <!-- Contenido principal -->
       <div class="column dashboard-content">
-        <!-- Mensajes globales -->
+        <!-- Mensajes globales (no se usan en este ejemplo, pero puedes hacerlo) -->
         <div id="global-message" class="notification is-hidden"></div>
 
         <!-- Upload Script -->
@@ -194,7 +227,11 @@
                 ></textarea>
               </div>
             </div>
+            <!-- Botones de Cargar y Actualizar -->
             <div class="control mt-2">
+              <button class="button is-link" type="button" id="load-script-btn">
+                Load Script
+              </button>
               <button class="button is-primary" type="submit">Update</button>
             </div>
           </form>
@@ -227,6 +264,17 @@
           <div class="mt-3">
             <strong>Response:</strong>
             <pre id="delete-response"></pre>
+          </div>
+        </section>
+        <hr />
+
+        <!-- Logs Viewer -->
+        <section id="logs">
+          <h2 class="title">View Logs</h2>
+          <button class="button is-info" id="logs-btn">Get Logs</button>
+          <div class="mt-3">
+            <strong>Logs Response (últimos 100):</strong>
+            <pre id="logs-response"></pre>
           </div>
         </section>
       </div>
@@ -262,7 +310,6 @@
           event.preventDefault();
           const scriptContent = document.getElementById("script-content").value;
 
-          // Llamada al endpoint /upload-script/
           try {
             const res = await fetch("/upload-script/", {
               method: "POST",
@@ -333,6 +380,35 @@
         });
 
         // ------------------
+        //   Load Script (para Update)
+        // ------------------
+        const loadScriptBtn = document.getElementById("load-script-btn");
+        loadScriptBtn.addEventListener("click", async () => {
+          const scriptId = document.getElementById("update-script-id").value;
+          const updateScriptContent = document.getElementById(
+            "update-script-content"
+          );
+          if (!scriptId) {
+            alert("Please enter a script ID (hash) first.");
+            return;
+          }
+          try {
+            const res = await fetch(`/load-script/${scriptId}`, {
+              method: "GET",
+            });
+            if (!res.ok) {
+              const errorData = await res.json();
+              updateScriptContent.value = `Error: ${errorData.detail}`;
+              return;
+            }
+            const data = await res.json();
+            updateScriptContent.value = data.content;
+          } catch (error) {
+            updateScriptContent.value = `Error: ${error}`;
+          }
+        });
+
+        // ------------------
         //   Update Script
         // ------------------
         const updateForm = document.getElementById("update-form");
@@ -380,6 +456,33 @@
             deleteResponse.textContent = error.toString();
           }
         });
+
+        // ------------------
+        //   View Logs
+        // ------------------
+        const logsBtn = document.getElementById("logs-btn");
+        const logsResponse = document.getElementById("logs-response");
+        logsBtn.addEventListener("click", async () => {
+          try {
+            const res = await fetch("/logs/");
+            const data = await res.json();
+            logsResponse.textContent = JSON.stringify(data, null, 2);
+          } catch (error) {
+            logsResponse.textContent = error.toString();
+          }
+        });
+      });
+    </script>
+    <script>
+      document.addEventListener("DOMContentLoaded", () => {
+        // ... (todo tu otro código)
+
+        const darkModeToggle = document.getElementById("dark-mode-toggle");
+        darkModeToggle.addEventListener("click", () => {
+          document.body.classList.toggle("dark-mode");
+        });
+
+        // ... (el resto de tu código existente)
       });
     </script>
   </body>
