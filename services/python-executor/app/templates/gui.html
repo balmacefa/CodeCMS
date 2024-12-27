@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>FastAPI GUI con Bulma</title>
+
+    <!-- Bulma CSS desde CDN -->
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css"
+    />
+
+    <style>
+      /* Estilos extra opcionales */
+      body {
+        margin: 20px;
+      }
+      .logs {
+        white-space: pre-wrap;
+        background: #f7f7f7;
+        border: 1px solid #ddd;
+        padding: 10px;
+        margin-top: 15px;
+        min-height: 150px;
+      }
+      .endpoint {
+        margin-bottom: 2rem;
+      }
+    </style>
+  </head>
+  <body>
+    <section class="section">
+      <div class="container">
+        <!-- Título principal -->
+        <h1 class="title">Interfaz para probar los Endpoints</h1>
+
+        <!-- 1. Iniciar Sesión -->
+        <div class="box endpoint">
+          <h2 class="subtitle">1. Iniciar Sesión</h2>
+          <button class="button is-primary" onclick="startSession()">
+            Iniciar Sesión
+          </button>
+          <p class="mt-2">
+            Session ID generado:
+            <span id="sessionId" class="has-text-weight-bold"></span>
+          </p>
+        </div>
+
+        <!-- 2. Subir Módulos -->
+        <div class="box endpoint">
+          <h2 class="subtitle">2. Subir Módulos</h2>
+          <div class="field">
+            <label class="label">Nombre del Módulo</label>
+            <div class="control">
+              <input
+                class="input"
+                type="text"
+                id="moduleName"
+                placeholder="p.ej. testModule"
+              />
+            </div>
+          </div>
+          <div class="field">
+            <label class="label">Archivo (nombre)</label>
+            <div class="control">
+              <input
+                class="input"
+                type="text"
+                id="fileName"
+                placeholder="p.ej. main.py"
+              />
+            </div>
+          </div>
+          <div class="field">
+            <label class="label">Contenido del archivo</label>
+            <div class="control">
+              <textarea
+                class="textarea"
+                id="fileContent"
+                rows="5"
+                placeholder="Contenido de main.py"
+              ></textarea>
+            </div>
+          </div>
+          <button class="button is-link" onclick="uploadModule()">
+            Subir Módulo
+          </button>
+        </div>
+
+        <!-- 3. Ejecutar Función -->
+        <div class="box endpoint">
+          <h2 class="subtitle">3. Ejecutar Función</h2>
+          <div class="field">
+            <label class="label">Función a invocar</label>
+            <div class="control">
+              <input
+                class="input"
+                type="text"
+                id="functionName"
+                placeholder="p.ej. my_method"
+              />
+            </div>
+          </div>
+          <div class="field">
+            <label class="label">Parámetros (JSON)</label>
+            <div class="control">
+              <textarea
+                class="textarea"
+                id="functionParams"
+                rows="3"
+                placeholder='{"param1": "value1", "param2": 42}'
+              ></textarea>
+            </div>
+          </div>
+          <button class="button is-warning" onclick="executeFunction()">
+            Ejecutar Función
+          </button>
+        </div>
+
+        <!-- 4. Cerrar Sesión -->
+        <div class="box endpoint">
+          <h2 class="subtitle">4. Cerrar Sesión</h2>
+          <button class="button is-danger" onclick="closeSession()">
+            Cerrar Sesión
+          </button>
+        </div>
+
+        <div class="box endpoint">
+          <h2 class="subtitle">Ver Estado del Servidor (root)</h2>
+          <button class="button is-info" onclick="getServerStatus()">
+            Obtener /
+          </button>
+        </div>
+
+        <div class="logs" id="responseLog"></div>
+      </div>
+    </section>
+
+    <script>
+      let sessionId = "";
+
+      async function startSession() {
+        try {
+          const response = await fetch("/start-session/", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({}),
+          });
+          const data = await response.json();
+          sessionId = data.session_id;
+          document.getElementById("sessionId").innerText = sessionId;
+          logResponse("start-session", data);
+        } catch (error) {
+          logResponse("start-session", { error: error.message });
+        }
+      }
+
+      async function uploadModule() {
+        if (!sessionId) {
+          alert("Primero inicia una sesión.");
+          return;
+        }
+        const moduleName = document.getElementById("moduleName").value;
+        const fileName = document.getElementById("fileName").value;
+        const fileContent = document.getElementById("fileContent").value;
+
+        const payload = {
+          modules: [
+            {
+              name: moduleName,
+              files: {
+                [fileName]: fileContent,
+              },
+            },
+          ],
+        };
+
+        try {
+          const response = await fetch(`/upload-modules/${sessionId}/`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          const data = await response.json();
+          logResponse("upload-modules", data);
+        } catch (error) {
+          logResponse("upload-modules", { error: error.message });
+        }
+      }
+
+      async function executeFunction() {
+        if (!sessionId) {
+          alert("Primero inicia una sesión.");
+          return;
+        }
+        const functionName = document.getElementById("functionName").value;
+        const paramsRaw = document.getElementById("functionParams").value;
+        let params = {};
+
+        try {
+          params = JSON.parse(paramsRaw || "{}");
+        } catch (e) {
+          alert("Parámetros JSON inválidos");
+          return;
+        }
+
+        const payload = {
+          function: functionName,
+          params: params,
+        };
+
+        try {
+          const response = await fetch(`/execute/${sessionId}/`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          const data = await response.json();
+          logResponse("execute", data);
+        } catch (error) {
+          logResponse("execute", { error: error.message });
+        }
+      }
+
+      async function closeSession() {
+        if (!sessionId) {
+          alert("No hay sesión para cerrar.");
+          return;
+        }
+
+        try {
+          const response = await fetch(`/close-session/${sessionId}/`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({}),
+          });
+          const data = await response.json();
+          logResponse("close-session", data);
+          sessionId = "";
+          document.getElementById("sessionId").innerText = "";
+        } catch (error) {
+          logResponse("close-session", { error: error.message });
+        }
+      }
+
+      async function getServerStatus() {
+        try {
+          const response = await fetch("/", {
+            method: "GET",
+            headers: { "Content-Type": "application/json" },
+          });
+          const data = await response.json();
+          logResponse("get-server-status", data);
+        } catch (error) {
+          logResponse("get-server-status", { error: error.message });
+        }
+      }
+
+      function logResponse(endpoint, data) {
+        const logDiv = document.getElementById("responseLog");
+        logDiv.textContent += `\n[${new Date().toLocaleTimeString()}] (${endpoint}) => ${JSON.stringify(
+          data,
+          null,
+          2
+        )}\n`;
+      }
+    </script>
+  </body>
+</html>

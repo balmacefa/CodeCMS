@@ -2,3 +2,12 @@ bpy==4.3.0
 fastapi
 uvicorn
 pydantic
+langchain
+langchain_community
+langchain_core
+langchain_groq
+langgraph
+python-dotenv
+watchdog
+debugpy
+jinja2

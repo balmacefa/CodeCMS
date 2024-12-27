@@ -1,5 +1,3 @@
-# main.py
-
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 import uuid  # Para generar IDs únicos de sesión
@@ -13,6 +11,18 @@ import asyncio  # Importación añadida
 from datetime import datetime  # Importación añadida
 import json
 import inspect
+import hashlib
+import importlib.util
+import tempfile
+import os
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+from typing import Dict, Any
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from fastapi.responses import HTMLResponse
+import os
+from fastapi.templating import Jinja2Templates
 
 # Configuración de Logging
 logger = logging.getLogger("fastapi_app")
@@ -38,6 +48,14 @@ logger.addHandler(file_handler)
 logger.addHandler(console_handler)
 
 app = FastAPI()
+
+# Diccionario en memoria para almacenar tanto el contenido como el módulo ya importado
+# Estructura:
+# scripts_map[hash_md5] = {
+#   "content": str,   # el contenido del script
+#   "module": Module, # referencia al módulo ya importado (o None si aún no se importó)
+# }
+scripts_map = {}
 logger.debug("Aplicación FastAPI inicializada.")
 
 # Directorio base para almacenar los módulos de cada sesión
@@ -490,3 +508,118 @@ async def debug_sessions():
     logger.debug("Recibiendo solicitud para debug de sesiones.")
     async with session_lock:
         return sessions
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
+# Carpeta donde se almacenarán plantillas
+# templates = Jinja2Templates(directory="templates")
+
+# (Opcional) si quieres servir archivos estáticos
+# app.mount("/static", StaticFiles(directory="static"), name="static")
+
+@app.get("/gui", response_class=HTMLResponse)
+async def gui(request: Request):
+    """
+    Devuelve un HTML que permitirá al usuario invocar tus endpoints.
+    """
+    return templates.TemplateResponse("gui.html", {"request": request})
+
+
+
+# ==== Modelos de entrada/salida ====
+class RunScriptRequest(BaseModel):
+    script: str             # Contenido del script
+    payload: Dict[str, Any] # Parámetros para la función main(**payload)
+
+class RunScriptResponse(BaseModel):
+    id: str       # Hash MD5 del script
+    result: Any   # Resultado devuelto por la función main(...)
+
+
+@app.post("/run-script/", response_model=RunScriptResponse)
+def run_script(request: RunScriptRequest):
+    """
+    Endpoint único que:
+    1) Calcula el hash MD5 del script.
+    2) Lo almacena en un cache en memoria si no existe.
+    3) Carga dinámicamente el módulo (solo la primera vez).
+    4) Ejecuta la función main(**payload).
+    5) Si ocurre un error, borra la entrada del scripts_map.
+    6) Retorna (id=hash, result=...) .
+    """
+
+    script_content = request.script
+    payload = request.payload
+
+    # 1) Generar hash MD5
+    script_hash = hashlib.md5(script_content.encode("utf-8")).hexdigest()
+
+    # 2) Verificar si ya existe en el cache
+    if script_hash not in scripts_map:
+        # Crear una nueva entrada en el cache
+        scripts_map[script_hash] = {
+            "content": script_content,
+            "module": None
+        }
+
+    # 3) Verificar si el módulo está cargado
+    if scripts_map[script_hash]["module"] is None:
+        # Intentar cargar dinámicamente el script
+        try:
+            module = load_script_module(script_hash, script_content)
+            scripts_map[script_hash]["module"] = module
+        except Exception as e:
+            # Si hay error al cargar el módulo, lo quitamos del cache
+            del scripts_map[script_hash]
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error al cargar el script dinámicamente: {e}"
+            )
+
+    # 4) Obtener referencia al módulo
+    module = scripts_map[script_hash]["module"]
+
+    # 5) Ejecutar main(**payload)
+    if not hasattr(module, "main"):
+        # Si no define 'main', eliminar del cache y error
+        del scripts_map[script_hash]
+        raise HTTPException(
+            status_code=400,
+            detail="El script no define una función 'main'."
+        )
+
+    main_func = getattr(module, "main")
+
+    try:
+        result = main_func(**payload)
+    except Exception as e:
+        # Si hay error en la ejecución de main, eliminamos el script del cache
+        del scripts_map[script_hash]
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error ejecutando main(): {e}"
+        )
+
+    # 6) Retornar el hash y el resultado
+    return RunScriptResponse(id=script_hash, result=result)
+
+
+def load_script_module(script_hash: str, script_content: str):
+    """
+    Carga el script en un módulo Python de manera dinámica usando importlib.
+    Retorna la referencia al módulo.
+    """
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        script_path = os.path.join(tmp_dir, f"{script_hash}.py")
+        # Guardar el contenido en un archivo temporal
+        with open(script_path, "w", encoding="utf-8") as f:
+            f.write(script_content)
+
+        # Crear especificación de import
+        spec = importlib.util.spec_from_file_location(script_hash, script_path)
+        if spec is None:
+            raise RuntimeError("No se pudo crear spec de importación.")
+
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)  # Ejecuta el contenido del script
+    return module
